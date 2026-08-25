@@ -16,28 +16,31 @@ export async function GET(request: Request) {
 
     await connectDB();
 
+    
     const user = await User.findOne({
       verifyToken: hashedToken,
       verifyTokenExpires: { $gt: new Date() },
     });
 
+    
     if (!user) {
       return NextResponse.json(
-        { error: "Invalid or expired verification link" },
-        { status: 400 }
+        { message: "Email is already verified or token expired. You can sign in." },
+        { status: 200 }
       );
     }
 
+    
     user.isVerified = true;
     user.verifyToken = undefined;
     user.verifyTokenExpires = undefined;
     await user.save();
 
     return NextResponse.json(
-      { message: "Your email has been verified successfully! Redirecting..." },
+      { message: "Your email has been verified successfully!" },
       { status: 200 }
     );
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
