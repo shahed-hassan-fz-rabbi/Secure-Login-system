@@ -64,7 +64,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    // 6. JWT Token Creation
+    // 6. Email Verification Check
+    if (!user.isVerified) {
+      return NextResponse.json(
+        { error: "Please verify your email via the link sent to your inbox before logging in." },
+        { status: 403 }
+      );
+    }
+
+    // 7. JWT Token Creation & Cookie Setting
     const token = jwt.sign(
       { userId: user._id, email: user.email },
       JWT_SECRET,

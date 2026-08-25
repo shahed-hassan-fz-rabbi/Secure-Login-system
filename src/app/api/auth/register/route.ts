@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
+import { sendVerificationEmail } from "@/lib/mail";
 
 const registerSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -34,19 +36,31 @@ export async function POST(request: Request) {
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
+    const rawVerifyToken = crypto.randomBytes(32).toString("hex");
+    const hashedVerifyToken = crypto.createHash("sha256").update(rawVerifyToken).digest("hex");
 
     await User.create({
       email,
       passwordHash,
+      isVerified: false,
+      verifyToken: hashedVerifyToken,
+      verifyTokenExpires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
     });
 
+    const origin = request.headers.get("origin") || "http://localhost:3000";
+    const verifyUrl = `${origin}/verify-email?token=${rawVerifyToken}`;
+
+    // send verification email
+    await sendVerificationEmail(email, verifyUrl);
+
     return NextResponse.json(
-      { message: "Account created successfully! Please sign in." },
+      { message: "Registration successful! Please check your Gmail to verify your account." },
       { status: 201 }
     );
   } catch (error) {
+    console.error("Register Error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to complete registration or send email" },
       { status: 500 }
     );
   }

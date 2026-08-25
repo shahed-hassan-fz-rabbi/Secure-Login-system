@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       { message: "Password has been successfully updated! You can now sign in." },
       { status: 200 }
     );
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
