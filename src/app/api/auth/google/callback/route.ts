@@ -8,14 +8,19 @@ const JWT_SECRET = process.env.JWT_SECRET!;
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
-  const origin = request.headers.get("origin") || "http://localhost:3000";
+
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
+  const proto = request.headers.get("x-forwarded-proto") || "https";
+  const origin = host ? `${proto}://${host}` : (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000");
 
   if (!code) {
     return NextResponse.redirect(`${origin}/?error=google_auth_failed`);
   }
 
   try {
-    // 1. Exchange code for access token
+    const redirectUri = `${origin}/api/auth/google/callback`;
+
+    // 1. Exchange authorization code for token
     const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -23,7 +28,7 @@ export async function GET(request: Request) {
         code,
         client_id: process.env.GOOGLE_CLIENT_ID!,
         client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-        redirect_uri: `${origin}/api/auth/google/callback`,
+        redirect_uri: redirectUri,
         grant_type: "authorization_code",
       }),
     });
@@ -31,10 +36,10 @@ export async function GET(request: Request) {
     const tokenData = await tokenResponse.json();
 
     if (!tokenData.access_token) {
-      throw new Error("Failed to get Google access token");
+      throw new Error("Failed to retrieve access token from Google");
     }
 
-    // 2. Fetch user profile from Google
+    // 2. Fetch user information
     const userResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
@@ -43,7 +48,6 @@ export async function GET(request: Request) {
 
     await connectDB();
 
-    // 3. Find or Create User in MongoDB
     let user = await User.findOne({ email: googleUser.email });
 
     if (!user) {
@@ -53,14 +57,19 @@ export async function GET(request: Request) {
         avatar: googleUser.picture,
         provider: "google",
         googleId: googleUser.id,
-        isVerified: true, // Google accounts are pre-verified
+        isVerified: true,
       });
-    } else if (!user.isVerified) {
-      user.isVerified = true;
+    } else {
+      if (!user.isVerified) {
+        user.isVerified = true;
+      }
+      if (!user.googleId) {
+        user.googleId = googleUser.id;
+      }
       await user.save();
     }
 
-    // 4. Create JWT Cookie
+    // 3. Create Session JWT Cookie
     const token = jwt.sign(
       { userId: user._id, email: user.email },
       JWT_SECRET,
