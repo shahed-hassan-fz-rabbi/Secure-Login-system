@@ -17,7 +17,7 @@ const JWT_SECRET = process.env.JWT_SECRET!;
 
 export async function POST(request: Request) {
   try {
-    // 1. IP extraction & Rate Limiting
+    // 1. Rate Limiting
     const forwarded = request.headers.get("x-forwarded-for");
     const ip = forwarded ? forwarded.split(",")[0] : "127.0.0.1";
 
@@ -58,7 +58,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    // 5. Password Verification
+    // 5. Password & Provider Verification (Fix for TypeScript & Google OAuth Users)
+    if (!user.passwordHash || user.provider === "google") {
+      return NextResponse.json(
+        { error: "This account was created with Google. Please use 'Continue with Google'." },
+        { status: 400 }
+      );
+    }
+
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
@@ -72,7 +79,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 7. JWT Token Creation & Cookie Setting
+    // 7. JWT Token Creation
     const token = jwt.sign(
       { userId: user._id, email: user.email },
       JWT_SECRET,
