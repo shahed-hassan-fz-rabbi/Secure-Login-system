@@ -17,7 +17,6 @@ const JWT_SECRET = process.env.JWT_SECRET!;
 
 export async function POST(request: Request) {
   try {
-    // 1. Rate Limiting
     const forwarded = request.headers.get("x-forwarded-for");
     const ip = forwarded ? forwarded.split(",")[0] : "127.0.0.1";
 
@@ -29,7 +28,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Input Validation
     const body = await request.json();
     const parsed = loginSchema.safeParse(body);
 
@@ -42,7 +40,6 @@ export async function POST(request: Request) {
 
     const { email, password, captchaToken } = parsed.data;
 
-    // 3. CAPTCHA Verification
     const isHuman = await verifyCaptchaToken(captchaToken);
     if (!isHuman) {
       return NextResponse.json(
@@ -51,14 +48,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // 4. Database Check
     await connectDB();
     const user = await User.findOne({ email });
     if (!user) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    // 5. Password & Provider Verification (Fix for TypeScript & Google OAuth Users)
     if (!user.passwordHash || user.provider === "google") {
       return NextResponse.json(
         { error: "This account was created with Google. Please use 'Continue with Google'." },
@@ -71,7 +66,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    // 6. Email Verification Check
     if (!user.isVerified) {
       return NextResponse.json(
         { error: "Please verify your email via the link sent to your inbox before logging in." },
@@ -79,7 +73,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // 7. JWT Token Creation
     const token = jwt.sign(
       { userId: user._id, email: user.email },
       JWT_SECRET,
