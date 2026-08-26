@@ -2,8 +2,12 @@ import mongoose, { Schema, Document, Model } from "mongoose";
 
 export interface IUser extends Document {
   email: string;
-  passwordHash: string;
+  passwordHash?: string;
   isVerified: boolean;
+  provider: "credentials" | "google";
+  googleId?: string;
+  name?: string;
+  avatar?: string;
   verifyToken?: string;
   verifyTokenExpires?: Date;
   resetPasswordToken?: string;
@@ -22,11 +26,25 @@ const UserSchema: Schema<IUser> = new Schema(
     },
     passwordHash: {
       type: String,
-      required: true,
+      required: false,
     },
     isVerified: {
       type: Boolean,
       default: false,
+    },
+    provider: {
+      type: String,
+      enum: ["credentials", "google"],
+      default: "credentials",
+    },
+    googleId: {
+      type: String,
+    },
+    name: {
+      type: String,
+    },
+    avatar: {
+      type: String,
     },
     verifyToken: {
       type: String,

@@ -5,10 +5,12 @@ import crypto from "crypto";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
 import { sendVerificationEmail } from "@/lib/mail";
+import { verifyCaptchaToken } from "@/lib/recaptcha";
 
 const registerSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(8, "Password must be at least 8 characters"),
+  captchaToken: z.string().min(1, "CAPTCHA verification is required"),
 });
 
 export async function POST(request: Request) {
@@ -23,10 +25,20 @@ export async function POST(request: Request) {
       );
     }
 
-    const { email, password } = parsed.data;
+    const { email, password, captchaToken } = parsed.data;
+
+    // 1. Verify Google reCAPTCHA
+    const isHuman = await verifyCaptchaToken(captchaToken);
+    if (!isHuman) {
+      return NextResponse.json(
+        { error: "CAPTCHA verification failed. Please try again." },
+        { status: 403 }
+      );
+    }
 
     await connectDB();
 
+    // 2. Check if user exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return NextResponse.json(
@@ -35,13 +47,16 @@ export async function POST(request: Request) {
       );
     }
 
+    // 3. Hash Password & Generate Verification Token
     const passwordHash = await bcrypt.hash(password, 12);
     const rawVerifyToken = crypto.randomBytes(32).toString("hex");
     const hashedVerifyToken = crypto.createHash("sha256").update(rawVerifyToken).digest("hex");
 
+    // 4. Save User with credentials provider
     await User.create({
       email,
       passwordHash,
+      provider: "credentials",
       isVerified: false,
       verifyToken: hashedVerifyToken,
       verifyTokenExpires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
@@ -50,7 +65,7 @@ export async function POST(request: Request) {
     const origin = request.headers.get("origin") || "http://localhost:3000";
     const verifyUrl = `${origin}/verify-email?token=${rawVerifyToken}`;
 
-    // send verification email
+    // 5. Send Verification Email
     await sendVerificationEmail(email, verifyUrl);
 
     return NextResponse.json(
