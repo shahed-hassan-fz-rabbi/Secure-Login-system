@@ -16,6 +16,7 @@ import {
   UserPlus,
   X,
   KeyRound,
+  Smartphone,
 } from "lucide-react";
 
 export default function AuthPage() {
@@ -34,6 +35,12 @@ export default function AuthPage() {
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
+
+  // 2FA Verification Modal States
+  const [showTwoFactorModal, setShowTwoFactorModal] = useState(false);
+  const [twoFactorUserId, setTwoFactorUserId] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpLoading, setOtpLoading] = useState(false);
 
   const passwordRules = {
     length: password.length >= 8,
@@ -84,6 +91,14 @@ export default function AuthPage() {
         recaptchaRef.current?.reset();
         setCaptchaToken(null);
       } else {
+        // Handle 2FA Challenge if enabled for this user
+        if (data.requires2FA) {
+          setTwoFactorUserId(data.userId);
+          setShowTwoFactorModal(true);
+          toast.info("Please enter your 6-digit Google Authenticator code.");
+          return;
+        }
+
         toast.success("Login successful! Redirecting...");
         router.push("/dashboard");
         router.refresh();
@@ -94,6 +109,39 @@ export default function AuthPage() {
       setCaptchaToken(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTwoFactorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (otpCode.length !== 6) {
+      toast.error("Please enter a valid 6-digit OTP code.");
+      return;
+    }
+
+    setOtpLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/2fa/login-challenge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: twoFactorUserId, token: otpCode }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "2FA verification failed.");
+      }
+
+      toast.success("2FA verified! Redirecting...");
+      setShowTwoFactorModal(false);
+      router.push("/dashboard");
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message || "Invalid OTP code");
+    } finally {
+      setOtpLoading(false);
     }
   };
 
@@ -324,72 +372,63 @@ export default function AuthPage() {
               </div>
 
               {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-orange-200 transition-all hover:from-orange-600 hover:to-orange-700 hover:shadow-xl active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {loading ? (
-                <>
-                  <Loader2 size={19} className="animate-spin" />
-                  {isSignUp ? "Creating account..." : "Signing in..."}
-                </>
-              ) : (
-                <>
-                  {isSignUp ? <UserPlus size={18} /> : <LockKeyhole size={18} />}
-                  {isSignUp ? "Register" : "Sign In"}
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* Divider */}
-          <div className="my-5 flex items-center gap-3">
-            <div className="h-px flex-1 bg-gray-200" />
-            <span className="text-xs text-gray-400">OR</span>
-            <div className="h-px flex-1 bg-gray-200" />
-          </div>
-
-          {/* Google Sign In Button */}
-          <a
-            href="/api/auth/google"
-            className="flex w-full items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 hover:shadow"
-          >
-            <svg className="h-5 w-5" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-              />
-            </svg>
-            <span>Continue with Google</span>
-          </a>
-
-        
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-orange-200 transition-all hover:from-orange-600 hover:to-orange-700 hover:shadow-xl active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 size={19} className="animate-spin" />
+                    {isSignUp ? "Creating account..." : "Signing in..."}
+                  </>
+                ) : (
+                  <>
+                    {isSignUp ? <UserPlus size={18} /> : <LockKeyhole size={18} />}
+                    {isSignUp ? "Register" : "Sign In"}
+                  </>
+                )}
+              </button>
+            </form>
 
             {/* Divider */}
-            <div className="my-6 flex items-center gap-3">
+            <div className="my-5 flex items-center gap-3">
               <div className="h-px flex-1 bg-gray-200" />
               <span className="text-xs text-gray-400">OR</span>
               <div className="h-px flex-1 bg-gray-200" />
             </div>
 
+            {/* Google Sign In Button */}
+            <a
+              href="/api/auth/google"
+              className="flex w-full items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 hover:shadow"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                />
+              </svg>
+              <span>Continue with Google</span>
+            </a>
+
             {/* Toggle Mode Button */}
             <button
               type="button"
               onClick={toggleAuthMode}
-              className="w-full rounded-xl border border-orange-200 bg-orange-50 py-3 text-sm font-semibold text-orange-600 transition hover:bg-orange-100"
+              className="mt-4 w-full rounded-xl border border-orange-200 bg-orange-50 py-3 text-sm font-semibold text-orange-600 transition hover:bg-orange-100"
             >
               {isSignUp ? "Already have an account? Sign In" : "Create New Account"}
             </button>
@@ -403,12 +442,70 @@ export default function AuthPage() {
         </div>
       </div>
 
+      {/* 2FA Challenge Modal */}
+      {showTwoFactorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2 font-bold text-orange-600">
+                <Smartphone size={20} />
+                <span>Two-Factor Authentication</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTwoFactorModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p className="mt-3 text-xs text-gray-500">
+              Enter the 6-digit verification code from your Google Authenticator app to proceed.
+            </p>
+
+            <form onSubmit={handleTwoFactorSubmit} className="mt-4 space-y-4">
+              <div className="relative">
+                <KeyRound size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+                  placeholder="000000"
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-center text-lg font-bold tracking-widest outline-none focus:border-orange-500 focus:bg-white"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTwoFactorModal(false)}
+                  className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={otpLoading || otpCode.length !== 6}
+                  className="flex-1 rounded-xl bg-orange-500 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-70"
+                >
+                  {otpLoading ? "Verifying..." : "Verify & Sign In"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Forgot Password Modal */}
       {showForgotModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <div className="flex items-center gap-2 text-orange-600 font-bold">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2 font-bold text-orange-600">
                 <KeyRound size={20} />
                 <span>Forgot Password</span>
               </div>

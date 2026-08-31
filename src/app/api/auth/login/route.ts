@@ -73,6 +73,15 @@ export async function POST(request: Request) {
       );
     }
 
+    // Two-Factor Authentication Check
+    if (user.twoFactorEnabled) {
+      return NextResponse.json({
+        requires2FA: true,
+        userId: user._id.toString(),
+        message: "Two-factor authentication required",
+      });
+    }
+
     const token = jwt.sign(
       { userId: user._id, email: user.email },
       JWT_SECRET,
