@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
+import { Session } from "@/models/Session";
 import { verifyCaptchaToken } from "@/lib/recaptcha";
 import { checkRateLimit } from "@/lib/rateLimit";
 
@@ -14,11 +16,13 @@ const loginSchema = z.object({
 });
 
 const JWT_SECRET = process.env.JWT_SECRET!;
+const MAX_DEVICES = 2; // Set maximum allowed concurrent devices
 
 export async function POST(request: Request) {
   try {
     const forwarded = request.headers.get("x-forwarded-for");
-    const ip = forwarded ? forwarded.split(",")[0] : "127.0.0.1";
+    const ip = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
+    const userAgent = request.headers.get("user-agent") || "Unknown Device";
 
     const isAllowed = checkRateLimit(ip, 5, 60 * 1000);
     if (!isAllowed) {
@@ -82,8 +86,30 @@ export async function POST(request: Request) {
       });
     }
 
+    // Check Active Device Sessions Limit
+    const activeSessionsCount = await Session.countDocuments({ userId: user._id });
+    if (activeSessionsCount >= MAX_DEVICES) {
+      return NextResponse.json(
+        {
+          error: `Device limit reached. Maximum ${MAX_DEVICES} devices allowed. Please log out from another device first.`,
+        },
+        { status: 403 }
+      );
+    }
+
+    // Create New Session
+    const sessionId = crypto.randomUUID();
+    await Session.create({
+      userId: user._id,
+      sessionId,
+      userAgent,
+      ipAddress: ip,
+      lastActive: new Date(),
+    });
+
+    // Generate JWT containing sessionId
     const token = jwt.sign(
-      { userId: user._id, email: user.email },
+      { userId: user._id, email: user.email, sessionId },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
