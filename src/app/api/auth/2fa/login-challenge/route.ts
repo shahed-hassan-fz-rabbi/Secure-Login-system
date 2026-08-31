@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { verify } from "otplib";
+import crypto from "crypto";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
+import { Session } from "@/models/Session";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
+const MAX_DEVICES = 2;
 
 export async function POST(request: Request) {
   try {
@@ -22,12 +25,11 @@ export async function POST(request: Request) {
 
     if (!user || !user.twoFactorSecret || !user.twoFactorEnabled) {
       return NextResponse.json(
-        { error: "2FA is not properly configured for this account" },
+        { error: "2FA is not configured for this account" },
         { status: 400 }
       );
     }
 
-    // Verify 6-digit OTP code against the user's secret
     const result = await verify({
       token: otpCode,
       secret: user.twoFactorSecret,
@@ -40,15 +42,37 @@ export async function POST(request: Request) {
       );
     }
 
-    // Generate Final Session JWT Token
+    // Check device limit
+    const activeSessionsCount = await Session.countDocuments({ userId: user._id });
+    if (activeSessionsCount >= MAX_DEVICES) {
+      return NextResponse.json(
+        { error: `Device limit reached. Maximum ${MAX_DEVICES} devices allowed.` },
+        { status: 403 }
+      );
+    }
+
+    // Create session record
+    const sessionId = crypto.randomUUID();
+    const forwarded = request.headers.get("x-forwarded-for");
+    const ip = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
+    const userAgent = request.headers.get("user-agent") || "Unknown Device";
+
+    await Session.create({
+      userId: user._id,
+      sessionId,
+      userAgent,
+      ipAddress: ip,
+      lastActive: new Date(),
+    });
+
     const token = jwt.sign(
-      { userId: user._id, email: user.email },
+      { userId: user._id, email: user.email, sessionId },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
 
     const response = NextResponse.json(
-      { message: "2FA Verification successful! Redirecting..." },
+      { message: "2FA Verification successful" },
       { status: 200 }
     );
 

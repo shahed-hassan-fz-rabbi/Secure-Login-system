@@ -141,6 +141,12 @@ Middleware Check
 
 Unauthenticated users attempting to access protected pages are automatically redirected to the login page.
 
+
+
+### 📱 5. Multi-Device Session Management & Device Limiting
+* **Centralized Session Tracking:** Dedicated `Session` collection mapping active user devices, IP addresses, and User-Agents.
+* **Concurrent Device Limit:** Enforces a strict limit (e.g., maximum 2 concurrent active sessions) across standard login, 2FA, and Google OAuth flows.
+* **Granular Session Revocation:** Allows remote device session invalidation directly from the database or dashboard.
 ---
 
 ## 🛠️ Tech Stack
@@ -161,7 +167,7 @@ Unauthenticated users attempting to access protected pages are automatically red
 | Email Service     | Nodemailer / Gmail SMTP     |
 | Notifications     | Sonner Toast               |
 | Deployment        | Vercel                      |
-
+| Session Tracking  | MongoDB Session Collection with Dynamic UUIDs |
 ---
 
 ## 📁 Project Structure
@@ -228,6 +234,8 @@ secure-login-system/
 │   │
 │   ├── models/
 │   │   └── User.ts
+│   │   └── Session.ts
+│   │   
 │   │
 │   └── middleware.ts
 │
@@ -457,7 +465,8 @@ Sensitive values stored via environment variables:
 | **2FA / TOTP**           | Second authentication factor         | Compromised passwords                     |
 | **Middleware**           | Route-level authentication           | Unauthorized page access                  |
 | **Hashed Tokens**        | Reset tokens stored as hashes        | Token interception                        |
-
+| **Device Limiting** | Active session counter in DB | Account sharing & credential leakage |
+| **Session Invalidation** | Remote session ID checking via JWT | Stale session & unauthorized device access |
 ---
 
 ## 🚀 Deployment

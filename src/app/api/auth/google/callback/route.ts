@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
+import { Session } from "@/models/Session";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
+const MAX_DEVICES = 2; // Maximum allowed concurrent devices
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -69,9 +72,31 @@ export async function GET(request: Request) {
       await user.save();
     }
 
-    // 3. Create Session JWT Cookie
+    // 3. Check Active Device Sessions Limit
+    const activeSessionsCount = await Session.countDocuments({ userId: user._id });
+    if (activeSessionsCount >= MAX_DEVICES) {
+      return NextResponse.redirect(
+        `${origin}/?error=device_limit_reached&message=Maximum+${MAX_DEVICES}+devices+allowed.+Please+logout+from+another+device.`
+      );
+    }
+
+    // 4. Create New Device Session
+    const sessionId = crypto.randomUUID();
+    const forwarded = request.headers.get("x-forwarded-for");
+    const ip = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
+    const userAgent = request.headers.get("user-agent") || "Google Auth Device";
+
+    await Session.create({
+      userId: user._id,
+      sessionId,
+      userAgent,
+      ipAddress: ip,
+      lastActive: new Date(),
+    });
+
+    // 5. Create Session JWT with sessionId
     const token = jwt.sign(
-      { userId: user._id, email: user.email },
+      { userId: user._id, email: user.email, sessionId },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
